@@ -10,6 +10,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
@@ -171,6 +172,11 @@ public class Contacts extends Fragment {
         int duration = Integer.valueOf(callDetails[5]);
         if(flagPause == 1){
             if(duration == 0){
+                Utils.sharedPreferences = getContext().getSharedPreferences(Utils.mySharedPreferences, Context.MODE_PRIVATE);
+                SharedPreferences.Editor editor = Utils.sharedPreferences.edit();
+                String reminderNames = Utils.sharedPreferences.getString("reminders", "");
+                editor.putString("reminders", reminderNames + "," + callDetails[1]);
+                editor.commit();
                 AlertDialog.Builder reminderDialog = new AlertDialog.Builder(getActivity());
                 String[] types = {"Set Reminder for 15 minutes", "Set Reminder for 30 minutes"};
                 reminderDialog.setItems(types, new DialogInterface.OnClickListener() {
@@ -215,7 +221,7 @@ public class Contacts extends Fragment {
     public static String[] getAllCallLogs(ContentResolver cr) {
         //reading all data in descending order according to DATE
         String[] callDetails = new String[6];
-        String strOrder = android.provider.CallLog.Calls.DATE + " ASC";
+        String strOrder = android.provider.CallLog.Calls.DATE + " DESC";
         Uri callUri = Uri.parse("content://call_log/calls");
         Cursor cur = cr.query(callUri, null, null, null, strOrder);
         // loop through cursor
@@ -227,6 +233,7 @@ public class Contacts extends Fragment {
                 callDetails[3] = cur.getString(cur.getColumnIndex(android.provider.CallLog.Calls.TYPE));
                 callDetails[4] = cur.getString(cur.getColumnIndex(android.provider.CallLog.Calls.NEW));
                 callDetails[5] = cur.getString(cur.getColumnIndex(android.provider.CallLog.Calls.DURATION));
+                break;
             }
         }
 
