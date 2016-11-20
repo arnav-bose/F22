@@ -20,6 +20,8 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.Fragment;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
+import android.telecom.TelecomManager;
+import android.telephony.TelephonyManager;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -46,9 +48,10 @@ public class Contacts extends Fragment {
     ListView listViewContacts;
     ArrayList<String> arrayListContacts = new ArrayList<>();
     private static final int REQUEST_CODE = 1;
-    private String READ_CONTACTS = Manifest.permission.READ_CONTACTS;
-    private String CALL_PHONE = Manifest.permission.CALL_PHONE;
-    private String READ_CALL_LOG = Manifest.permission.READ_CALL_LOG;
+    private final String READ_CONTACTS = Manifest.permission.READ_CONTACTS;
+    private final String CALL_PHONE = Manifest.permission.CALL_PHONE;
+    private final String READ_CALL_LOG = Manifest.permission.READ_CALL_LOG;
+    private final String READ_PHONE_STATE = Manifest.permission.READ_PHONE_STATE;
     private DatePickerDialog datePickerDialog;
     private int reminderTime = 0;
     private int flagPause = 0;
@@ -67,22 +70,27 @@ public class Contacts extends Fragment {
 
         if (ContextCompat.checkSelfPermission(getActivity(), READ_CONTACTS) == PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(getActivity(), CALL_PHONE) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(getActivity(), READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED) {
+                ContextCompat.checkSelfPermission(getActivity(), READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(getActivity(), READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
 
             // We have access. Life is good.
             displayListView();
         } else if (ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), READ_CONTACTS)
                 && ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), CALL_PHONE)
-                && ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), READ_CALL_LOG)) {
+                && ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), READ_CALL_LOG)
+                && ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), READ_PHONE_STATE)) {
 
             // We've been denied once before. Explain why we need the permission, then ask again.
-            requestPermissions(new String[]{READ_CONTACTS, CALL_PHONE, READ_CALL_LOG}, REQUEST_CODE);
+            requestPermissions(new String[]{READ_CONTACTS, CALL_PHONE, READ_CALL_LOG, READ_PHONE_STATE}, REQUEST_CODE);
         } else {
 
             // We've never asked. Just do it.
-            requestPermissions(new String[]{READ_CONTACTS, CALL_PHONE, READ_CALL_LOG}, REQUEST_CODE);
+            requestPermissions(new String[]{READ_CONTACTS, CALL_PHONE, READ_CALL_LOG, READ_PHONE_STATE}, REQUEST_CODE);
         }
 
+        PhoneStateListener phoneStateListener = new PhoneStateListener(getContext());
+        TelephonyManager telephonyManager = (TelephonyManager) getContext().getSystemService(Context.TELEPHONY_SERVICE);
+        telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE);
 
         return view;
     }
@@ -113,12 +121,14 @@ public class Contacts extends Fragment {
                 perms.put(Manifest.permission.READ_CONTACTS, PackageManager.PERMISSION_GRANTED);
                 perms.put(Manifest.permission.CALL_PHONE, PackageManager.PERMISSION_GRANTED);
                 perms.put(Manifest.permission.READ_CALL_LOG, PackageManager.PERMISSION_GRANTED);
+                perms.put(Manifest.permission.READ_PHONE_STATE, PackageManager.PERMISSION_GRANTED);
                 // Fill with results
                 for (int i = 0; i < permissions.length; i++)
                     perms.put(permissions[i], grantResults[i]);
                 if (perms.get(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED &&
                         perms.get(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED &&
-                        perms.get(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED) {
+                        perms.get(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED &&
+                        perms.get(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
                     // All Permissions Granted
                     displayListView();
                 } else {
@@ -144,7 +154,7 @@ public class Contacts extends Fragment {
                 String[] detailsCouple = value.split(":");
                 String phone = detailsCouple[1].trim();
 
-                try{
+                try {
                     Intent callIntent = new Intent(Intent.ACTION_CALL);
                     callIntent.setData(Uri.parse("tel:" + phone));
                     startActivity(callIntent);
@@ -170,13 +180,17 @@ public class Contacts extends Fragment {
         String callDetails[] = getAllCallLogs(getActivity().getContentResolver());
         //Toast.makeText(getContext(), callDetails[1] + callDetails[5], Toast.LENGTH_SHORT).show();
         int duration = Integer.valueOf(callDetails[5]);
-        if(flagPause == 1){
-            if(duration == 0){
+        int type = Integer.valueOf(callDetails[3]);
+        if (flagPause == 1) {
+            if (duration == 0 && type == 2 || type == 5) {
                 Utils.sharedPreferences = getContext().getSharedPreferences(Utils.mySharedPreferences, Context.MODE_PRIVATE);
                 SharedPreferences.Editor editor = Utils.sharedPreferences.edit();
                 String reminderNames = Utils.sharedPreferences.getString("reminders", "");
+                editor.putString("reminders", "");
+                editor.apply();
                 editor.putString("reminders", reminderNames + "," + callDetails[1]);
-                editor.commit();
+                editor.apply();
+
                 AlertDialog.Builder reminderDialog = new AlertDialog.Builder(getActivity());
                 String[] types = {"Set Reminder for 15 minutes", "Set Reminder for 30 minutes"};
                 reminderDialog.setItems(types, new DialogInterface.OnClickListener() {
@@ -187,11 +201,13 @@ public class Contacts extends Fragment {
                             case 0: {
                                 reminderTime = 15;
                                 setNotificationAlarm(reminderTime);
+                                updateReminderList();
                             }
                             break;
                             case 1: {
                                 reminderTime = 30;
                                 setNotificationAlarm(reminderTime);
+                                updateReminderList();
                             }
                             break;
                         }
@@ -200,21 +216,22 @@ public class Contacts extends Fragment {
                 reminderDialog.show();
             }
         }
+        flagPause = 0;
 
     }
 
-    public void setNotificationAlarm(int reminderTime){
+    public void updateReminderList(){
+        Reminder.arrayAdapterReminders.notifyDataSetChanged();
+    }
+
+    public void setNotificationAlarm(int reminderTime) {
         Intent intentNotification = new Intent("android.media.action.DISPLAY_NOTIFICATION");
         intentNotification.addCategory("android.intent.category.DEFAULT");
 
-
         PendingIntent broadcast = PendingIntent.getBroadcast(getActivity(), 100, intentNotification, PendingIntent.FLAG_UPDATE_CURRENT);
-
-
-        AlarmManager alarmManager = (AlarmManager)getActivity().getSystemService(Context.ALARM_SERVICE);
-
+        AlarmManager alarmManager = (AlarmManager) getActivity().getSystemService(Context.ALARM_SERVICE);
         Calendar calendar = Calendar.getInstance();
-        calendar.add(Calendar.MINUTE, reminderTime);
+        calendar.add(Calendar.SECOND, reminderTime);
         alarmManager.setExact(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), broadcast);
     }
 
@@ -226,7 +243,7 @@ public class Contacts extends Fragment {
         Cursor cur = cr.query(callUri, null, null, null, strOrder);
         // loop through cursor
         if (cur != null) {
-            while(cur.moveToNext()){
+            while (cur.moveToNext()) {
                 callDetails[0] = cur.getString(cur.getColumnIndex(android.provider.CallLog.Calls.NUMBER));
                 callDetails[1] = cur.getString(cur.getColumnIndex(android.provider.CallLog.Calls.CACHED_NAME));
                 callDetails[2] = cur.getString(cur.getColumnIndex(android.provider.CallLog.Calls.DATE));

@@ -20,7 +20,7 @@ public class Utils {
         String reminder = sharedPreferences.getString("reminders", "");
         String[] reminderNames = reminder.split(",");
         if(reminderNames.length == 1){
-            arrayListReminders.add("No Reminders");
+            arrayListReminders.add("");
         }
         else{
             for(int i = 1; i< reminderNames.length; i++){
