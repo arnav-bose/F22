@@ -231,7 +231,7 @@ public class Contacts extends Fragment {
         PendingIntent broadcast = PendingIntent.getBroadcast(getActivity(), 100, intentNotification, PendingIntent.FLAG_UPDATE_CURRENT);
         AlarmManager alarmManager = (AlarmManager) getActivity().getSystemService(Context.ALARM_SERVICE);
         Calendar calendar = Calendar.getInstance();
-        calendar.add(Calendar.SECOND, reminderTime);
+        calendar.add(Calendar.MINUTE, reminderTime);
         alarmManager.setExact(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), broadcast);
     }
 
